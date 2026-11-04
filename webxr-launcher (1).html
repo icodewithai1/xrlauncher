@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#1e1e1e">
+<title>WebXR Launcher</title>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0;background:#1e1e1e;color:#e8e8e8;overflow:hidden;
+    font-family:"Segoe UI",system-ui,-apple-system,Arial,sans-serif;font-size:13px}
+
+  /* ---------------- window chrome ---------------- */
+  #app{position:fixed;inset:0;display:flex;flex-direction:column;background:#1e1e1e}
+  #titlebar{height:32px;flex:0 0 32px;background:#2b2b2b;border-bottom:1px solid #141414;
+    display:flex;align-items:center;padding-left:10px;user-select:none;
+    -webkit-app-region:drag}
+  #titlebar .title{font-size:12px;color:#e8e8e8;letter-spacing:.01em;flex:1}
+  #titlebar .winbtns{display:flex;height:100%}
+  #titlebar .wb{width:46px;height:100%;border:0;background:transparent;color:#d8d8d8;
+    font-family:inherit;font-size:12px;line-height:1;cursor:default;display:flex;
+    align-items:center;justify-content:center}
+  #titlebar .wb:hover{background:#3a3a3a}
+  #titlebar .wb.close:hover{background:#c42b1c;color:#fff}
+
+  #body{flex:1;min-height:0;display:flex;flex-direction:column;padding:14px;gap:12px}
+
+  /* ---------------- buttons ---------------- */
+  .btn{background:#2d2d2d;border:1px solid #3f3f3f;color:#e8e8e8;border-radius:0;
+    padding:10px 16px;font-family:inherit;font-size:13px;cursor:pointer;
+    min-width:130px;text-align:center}
+  .btn:hover{background:#3a3a3a;border-color:#4a4a4a}
+  .btn:active{background:#262626}
+  .btn.primary{border-color:#0a84ff}
+  .btn.danger:hover{background:#5a1d1d;border-color:#c42b1c}
+  .btn.sm{padding:6px 12px;min-width:0;font-size:12px}
+
+  #home{display:flex;flex-direction:column;gap:12px;height:100%}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+  /* ---------------- progress ---------------- */
+  #progressWrap{display:none;flex-direction:column;gap:6px}
+  #progressWrap.on{display:flex}
+  #barOuter{height:10px;background:#141414;border:1px solid #3c3c3c}
+  #barFill{height:100%;width:0%;background:#0a84ff;transition:width .12s linear}
+  #barText{font-size:12px;color:#b9b9b9}
+
+  /* ---------------- url row ---------------- */
+  #urlRow{display:flex;gap:8px}
+  #url{flex:1;min-width:0;background:#141414;border:1px solid #3c3c3c;color:#e8e8e8;
+    padding:9px 10px;font-family:inherit;font-size:13px;border-radius:0;outline:none}
+  #url:focus{border-color:#0a84ff}
+
+  /* ---------------- stored list ---------------- */
+  #panel{display:none;flex:1;min-height:0;flex-direction:column;gap:10px}
+  #panel.on{display:flex}
+  #list{flex:1;min-height:0;overflow:auto;border:1px solid #3c3c3c;background:#181818}
+  .item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid #2c2c2c}
+  .item:hover{background:#222}
+  .item .meta{flex:1;min-width:0}
+  .item .nm{font-size:13px;color:#f0f0f0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item .sub{font-size:11px;color:#8f8f8f;margin-top:2px}
+  #empty{padding:16px;color:#8f8f8f;font-size:12px}
+
+  #bottom{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  #status{font-size:12px;color:#8f8f8f;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* ---------------- runner ---------------- */
+  #runner{position:fixed;inset:0;z-index:50;background:#000;display:none}
+  #runner.on{display:block}
+  #frame{width:100%;height:100%;border:0;display:block;background:#000}
+  #runnerBar{position:fixed;top:0;left:0;right:0;height:30px;z-index:60;background:#2b2b2b;
+    border-bottom:1px solid #141414;display:flex;align-items:center;padding:0 10px;gap:10px;
+    opacity:.25;transition:opacity .2s}
+  #runnerBar:hover{opacity:1}
+  #runnerBar .t{font-size:12px;color:#dcdcdc;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #runner .frameWrap{position:absolute;top:0;left:0;right:0;bottom:0}
+  #closeRun{background:#2d2d2d;border:1px solid #3f3f3f;color:#e8e8e8;border-radius:0;
+    padding:4px 12px;font-family:inherit;font-size:12px;cursor:pointer}
+  #closeRun:hover{background:#5a1d1d;border-color:#c42b1c}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="body">
+    <div id="home">
+      <div class="row">
+        <button class="btn primary" id="uploadBtn">Upload HTML</button>
+        <button class="btn" id="storedBtn">Stored HTMLs</button>
+      </div>
+
+      <div id="urlRow">
+        <input id="url" type="text" spellcheck="false" placeholder="https://… open a hosted WebXR build">
+        <button class="btn" id="openUrlBtn">Open URL</button>
+      </div>
+
+      <div id="progressWrap">
+        <div id="barOuter"><div id="barFill"></div></div>
+        <div id="barText">Idle</div>
+      </div>
+
+      <div id="panel">
+        <div id="list"></div>
+        <div class="row">
+          <button class="btn" id="backBtn">Back</button>
+          <button class="btn danger" id="clearBtn">Delete all</button>
+        </div>
+      </div>
+
+      <div id="bottom">
+        <div id="status">Ready</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="runner">
+  <div class="frameWrap">
+    <iframe id="frame" title="running page"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups
+               allow-popups-to-escape-sandbox allow-modals allow-downloads allow-orientation-lock
+               allow-presentation allow-top-navigation-by-user-activation allow-storage-access-by-user-activation"
+      allow="xr-spatial-tracking; fullscreen; gamepad; autoplay; camera; microphone; accelerometer;
+             gyroscope; magnetometer; clipboard-read; clipboard-write; display-capture;
+             screen-wake-lock; encrypted-media; picture-in-picture; web-share"
+      allowfullscreen></iframe>
+  </div>
+  <div id="runnerBar">
+    <div class="t" id="runTitle">page</div>
+    <button id="fullBtn">Fullscreen</button>
+    <button id="closeRun">Close</button>
+  </div>
+</div>
+
+<input type="file" id="file" accept=".html,.htm,text/html" style="display:none">
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var app = $('app'), home = $('home'), panel = $('panel'), list = $('list'),
+      fileInput = $('file'), statusEl = $('status'), runner = $('runner'), frame = $('frame'),
+      runTitle = $('runTitle'), barFill = $('barFill'), barText = $('barText'),
+      progressWrap = $('progressWrap'), urlInput = $('url');
+  var currentUrl = null, memory = [], viewingList = false;
+
+  function status(t) { statusEl.textContent = t; }
+  function prog(p, label) {
+    progressWrap.classList.add('on');
+    barFill.style.width = Math.max(0, Math.min(100, p)) + '%';
+    if (label) barText.textContent = label;
+    if (p >= 100) {
+      setTimeout(function () {
+        progressWrap.classList.remove('on');
+        barFill.style.width = '0%';
+        barText.textContent = 'Idle';
+      }, 700);
+    }
+  }
+
+  /* ======================= IndexedDB ======================= */
+  var DB = 'webxr-launcher', STORE = 'pages', dbp = null;
+  function db() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res, rej) {
+      if (!window.indexedDB) { rej(new Error('no indexeddb')); return; }
+      var req = indexedDB.open(DB, 1);
+      req.onupgradeneeded = function () {
+        var d = req.result;
+        if (!d.objectStoreNames.contains(STORE)) d.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      req.onsuccess = function () { res(req.result); };
+      req.onerror = function () { rej(req.error || new Error('idb error')); };
+    });
+    return dbp;
+  }
+  function all() {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var r = d.transaction(STORE, 'readonly').objectStore(STORE).getAll();
+        r.onsuccess = function () { res(r.result || []); };
+        r.onerror = function () { rej(r.error); };
+      });
+    });
+  }
+  function put(rec) {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var r = d.transaction(STORE, 'readwrite').objectStore(STORE).put(rec);
+        r.onsuccess = function () { res(rec); };
+        r.onerror = function () { rej(r.error); };
+      });
+    });
+  }
+  function del(id) {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var r = d.transaction(STORE, 'readwrite').objectStore(STORE).delete(id);
+        r.onsuccess = function () { res(true); };
+        r.onerror = function () { rej(r.error); };
+      });
+    });
+  }
+  function newId() {
+    try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (e) { }
+    return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  }
+  function save(rec) {
+    return put(rec).catch(function () {
+      memory = memory.filter(function (r) { return r.id !== rec.id; });
+      memory.push(rec);
+      status('IndexedDB blocked - kept in memory for this session');
+      return rec;
+    });
+  }
+  function loadAll() {
+    return all().catch(function () { return memory.slice(); });
+  }
+
+  /* ======================= runner ======================= */
+  function launchBlob(rec) {
+    if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
+    var blob = new Blob([rec.html], { type: 'text/html' });
+    currentUrl = URL.createObjectURL(blob);
+    frame.setAttribute('src', currentUrl);
+    runTitle.textContent = rec.name + '  -  ' + Math.max(1, Math.round(blob.size / 1024)) + ' KB';
+    runner.classList.add('on');
+    fs();
+    status('Running ' + rec.name);
+  }
+  function launchUrl(url) {
+    if (!/^https?:\/\//i.test(url)) { status('Enter a full http(s) URL'); return; }
+    frame.setAttribute('src', url);
+    runTitle.textContent = url;
+    runner.classList.add('on');
+    fs();
+    status('Running ' + url);
+  }
+  function fs() {
+    var f = runner.requestFullscreen || runner.webkitRequestFullscreen;
+    if (f) { try { var p = f.call(runner); if (p && p.catch) p.catch(function () { }); } catch (e) { } }
+  }
+  function closeRunner() {
+    runner.classList.remove('on');
+    frame.setAttribute('src', 'about:blank');
+    if (currentUrl) { URL.revokeObjectURL(currentUrl); currentUrl = null; }
+    if (document.fullscreenElement) {
+      var ex = document.exitFullscreen || document.webkitExitFullscreen;
+      if (ex) { try { ex.call(document); } catch (e) { } }
+    }
+  }
+
+  /* ======================= upload ======================= */
+  $('uploadBtn').addEventListener('click', function () { fileInput.click(); });
+  fileInput.addEventListener('change', function () {
+    var f = fileInput.files && fileInput.files[0];
+    fileInput.value = '';
+    if (!f) return;
+    if (!/\.html?$/i.test(f.name) && f.type !== 'text/html') { status('That is not an .html file'); return; }
+    prog(8, 'Reading ' + f.name + '...');
+    var r = new FileReader();
+    r.onprogress = function (e) { if (e.lengthComputable) prog(8 + 60 * (e.loaded / e.total), 'Reading...'); };
+    r.onload = function () {
+      var rec = { id: newId(), name: f.name, size: f.size, date: Date.now(), html: String(r.result) };
+      prog(75, 'Saving to IndexedDB...');
+      save(rec).then(function () {
+        prog(100, 'Launching...');
+        setTimeout(function () { launchBlob(rec); }, 180);
+      });
+    };
+    r.onerror = function () { prog(100, 'Read failed'); status('Could not read that file'); };
+    r.readAsText(f);
+  });
+
+  $('openUrlBtn').addEventListener('click', function () {
+    prog(30, 'Opening URL...');
+    setTimeout(function () {
+      launchUrl(urlInput.value.trim());
+      prog(100, 'Launched');
+    }, 150);
+  });
+
+  /* ======================= stored list ======================= */
+  function fmt(b) { return b < 1024 ? b + ' B' : (b / 1024).toFixed(0) + ' KB'; }
+  function fmtDate(t) { try { return new Date(t).toLocaleString(); } catch (e) { return ''; } }
+
+  function render(pages) {
+    list.innerHTML = '';
+    if (!pages.length) {
+      var e = document.createElement('div');
+      e.id = 'empty';
+      e.textContent = 'No stored HTML files.';
+      list.appendChild(e);
+      return;
+    }
+    pages.sort(function (a, b) { return (b.date || 0) - (a.date || 0); });
+    pages.forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'item';
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      var nm = document.createElement('div');
+      nm.className = 'nm'; nm.textContent = p.name;
+      var sub = document.createElement('div');
+      sub.className = 'sub'; sub.textContent = fmt(p.size || 0) + '  -  ' + fmtDate(p.date);
+      meta.appendChild(nm); meta.appendChild(sub);
+
+      var open = document.createElement('button');
+      open.className = 'btn sm'; open.textContent = 'Open';
+      open.addEventListener('click', function () { prog(100, 'Launching...'); launchBlob(p); });
+
+      var rm = document.createElement('button');
+      rm.className = 'btn sm danger'; rm.textContent = 'Delete';
+      rm.addEventListener('click', function () {
+        del(p.id).catch(function () { memory = memory.filter(function (r) { return r.id !== p.id; }); })
+          .then(function () { status('Deleted ' + p.name); refresh(); });
+      });
+
+      row.appendChild(meta); row.appendChild(open); row.appendChild(rm);
+      list.appendChild(row);
+    });
+  }
+
+  function refresh() {
+    return loadAll().then(render);
+  }
+
+  $('storedBtn').addEventListener('click', function () {
+    viewingList = true;
+    home.querySelector('.row').style.display = 'none';
+    $('urlRow').style.display = 'none';
+    panel.classList.add('on');
+    prog(20, 'Loading stored files...');
+    refresh().then(function () { prog(100, 'Loaded'); });
+  });
+  $('backBtn').addEventListener('click', function () {
+    viewingList = false;
+    panel.classList.remove('on');
+    home.querySelector('.row').style.display = 'flex';
+    $('urlRow').style.display = 'flex';
+  });
+  $('clearBtn').addEventListener('click', function () {
+    prog(20, 'Deleting all...');
+    loadAll().then(function (pages) {
+      var jobs = pages.map(function (p) { return del(p.id).catch(function () { }); });
+      memory = [];
+      return Promise.all(jobs);
+    }).then(function () { prog(100, 'Deleted'); status('All stored files deleted'); refresh(); });
+  });
+
+  /* ======================= window buttons ======================= */
+  document.querySelectorAll('#titlebar .wb').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var k = btn.getAttribute('data-win');
+      if (k === 'close') { closeRunner(); status('Closed running page'); }
+      if (k === 'max') {
+        if (document.fullscreenElement) {
+          var ex = document.exitFullscreen || document.webkitExitFullscreen;
+          if (ex) { try { ex.call(document); } catch (e) { } }
+        } else if (app.requestFullscreen) { app.requestFullscreen().catch(function () { }); }
+      }
+      if (k === 'min') { status('WebXR Launcher - minimised'); }
+    });
+  });
+
+  /* ======================= misc ======================= */
+  $('fullBtn').addEventListener('click', function () {
+    if (document.fullscreenElement) {
+      var ex = document.exitFullscreen || document.webkitExitFullscreen;
+      if (ex) { try { ex.call(document); } catch (e) { } }
+    } else fs();
+  });
+  $('closeRun').addEventListener('click', closeRunner);
+  window.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      if (document.fullscreenElement) {
+        var ex = document.exitFullscreen || document.webkitExitFullscreen;
+        if (ex) { try { ex.call(document); } catch (e) { } }
+      } else if (runner.classList.contains('on')) closeRunner();
+    }
+  });
+
+  if (!window.indexedDB) status('IndexedDB unavailable - uploads last only for this session');
+  else status('Ready');
+})();
+</script>
+</body>
+</html>
